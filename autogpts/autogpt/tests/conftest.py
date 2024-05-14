@@ -3,16 +3,14 @@ from __future__ import annotations
 import os
 import uuid
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pytest
-import yaml
 from pytest_mock import MockerFixture
 
 from autogpt.agents.agent import Agent, AgentConfiguration, AgentSettings
-from autogpt.app.main import _configure_openai_provider
+from autogpt.app.main import _configure_llm_provider
 from autogpt.config import AIProfile, Config, ConfigBuilder
-from autogpt.core.resource.model_providers import ChatModelProvider, OpenAIProvider
+from autogpt.core.resource.model_providers import ChatModelProvider
 from autogpt.file_storage.local import (
     FileStorage,
     FileStorageConfiguration,
@@ -48,23 +46,8 @@ def storage(app_data_dir: Path) -> FileStorage:
     return storage
 
 
-@pytest.fixture
-def temp_plugins_config_file():
-    """
-    Create a plugins_config.yaml file in a temp directory
-    so that it doesn't mess with existing ones.
-    """
-    config_directory = TemporaryDirectory()
-    config_file = Path(config_directory.name) / "plugins_config.yaml"
-    with open(config_file, "w+") as f:
-        f.write(yaml.dump({}))
-
-    yield config_file
-
-
 @pytest.fixture(scope="function")
 def config(
-    temp_plugins_config_file: Path,
     tmp_project_root: Path,
     app_data_dir: Path,
     mocker: MockerFixture,
@@ -75,19 +58,8 @@ def config(
 
     config.app_data_dir = app_data_dir
 
-    config.plugins_dir = "tests/unit/data/test_plugins"
-    config.plugins_config_file = temp_plugins_config_file
-
     config.noninteractive_mode = True
 
-    # avoid circular dependency
-    from autogpt.plugins.plugins_config import PluginsConfig
-
-    config.plugins_config = PluginsConfig.load_config(
-        plugins_config_file=config.plugins_config_file,
-        plugins_denylist=config.plugins_denylist,
-        plugins_allowlist=config.plugins_allowlist,
-    )
     yield config
 
 
@@ -101,8 +73,8 @@ def setup_logger(config: Config):
 
 
 @pytest.fixture
-def llm_provider(config: Config) -> OpenAIProvider:
-    return _configure_openai_provider(config)
+def llm_provider(config: Config) -> ChatModelProvider:
+    return _configure_llm_provider(config)
 
 
 @pytest.fixture
@@ -125,7 +97,6 @@ def agent(
             smart_llm=config.smart_llm,
             allow_fs_access=not config.restrict_to_workspace,
             use_functions_api=config.openai_functions,
-            plugins=config.plugins,
         ),
         history=Agent.default_settings.history.copy(deep=True),
     )

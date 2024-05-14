@@ -42,6 +42,8 @@ from autogpt.core.resource.model_providers.schema import (
 from autogpt.core.utils.json_schema import JSONSchema
 from autogpt.core.utils.json_utils import json_loads
 
+from .utils import validate_tool_calls
+
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
@@ -70,9 +72,11 @@ class OpenAIModelName(str, enum.Enum):
     GPT4_v3 = "gpt-4-1106-preview"
     GPT4_v3_VISION = "gpt-4-1106-vision-preview"
     GPT4_v4 = "gpt-4-0125-preview"
+    GPT4_v5 = "gpt-4-turbo-2024-04-09"
     GPT4_ROLLING = "gpt-4"
     GPT4_ROLLING_32k = "gpt-4-32k"
-    GPT4_TURBO = "gpt-4-turbo-preview"
+    GPT4_TURBO = "gpt-4-turbo"
+    GPT4_TURBO_PREVIEW = "gpt-4-turbo-preview"
     GPT4_VISION = "gpt-4-vision-preview"
     GPT4 = GPT4_ROLLING
     GPT4_32k = GPT4_ROLLING_32k
@@ -180,8 +184,10 @@ chat_model_mapping = {
     OpenAIModelName.GPT4_TURBO: [
         OpenAIModelName.GPT4_v3,
         OpenAIModelName.GPT4_v3_VISION,
-        OpenAIModelName.GPT4_v4,
         OpenAIModelName.GPT4_VISION,
+        OpenAIModelName.GPT4_v4,
+        OpenAIModelName.GPT4_TURBO_PREVIEW,
+        OpenAIModelName.GPT4_v5,
     ],
 }
 for base, copies in chat_model_mapping.items():
@@ -294,6 +300,7 @@ class OpenAIProvider(
         budget=ModelProviderBudget(),
     )
 
+    _settings: OpenAISettings
     _configuration: OpenAIConfiguration
     _credentials: OpenAICredentials
     _budget: ModelProviderBudget
@@ -308,11 +315,7 @@ class OpenAIProvider(
         if not settings.credentials:
             settings.credentials = OpenAICredentials.from_env()
 
-        self._settings = settings
-
-        self._configuration = settings.configuration
-        self._credentials = settings.credentials
-        self._budget = settings.budget
+        super(OpenAIProvider, self).__init__(settings=settings, logger=logger)
 
         if self._credentials.api_type == "azure":
             from openai import AsyncAzureOpenAI
@@ -324,8 +327,6 @@ class OpenAIProvider(
             from openai import AsyncOpenAI
 
             self._client = AsyncOpenAI(**self._credentials.get_api_access_kwargs())
-
-        self._logger = logger or logging.getLogger(__name__)
 
     async def get_available_models(self) -> list[ChatModelInfo]:
         _models = (await self._client.models.list()).data
@@ -394,6 +395,7 @@ class OpenAIProvider(
         completion_parser: Callable[[AssistantChatMessage], _T] = lambda _: None,
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        prefill_response: str = "",  # not supported by OpenAI
         **kwargs,
     ) -> ChatModelResponse[_T]:
         """Create a completion using the OpenAI API and parse it."""
@@ -428,6 +430,10 @@ class OpenAIProvider(
             )
             parse_errors += _errors
 
+            # Validate tool calls
+            if not parse_errors and tool_calls and functions:
+                parse_errors += validate_tool_calls(tool_calls, functions)
+
             assistant_msg = AssistantChatMessage(
                 content=_assistant_msg.content,
                 tool_calls=tool_calls or None,
@@ -461,8 +467,11 @@ class OpenAIProvider(
                 self._logger.debug(
                     f"Parsing failed on response: '''{_assistant_msg}'''"
                 )
+                parse_errors_fmt = "\n\n".join(
+                    f"{e.__class__.__name__}: {e}" for e in parse_errors
+                )
                 self._logger.warning(
-                    f"Parsing attempt #{attempts} failed: {parse_errors}"
+                    f"Parsing attempt #{attempts} failed: {parse_errors_fmt}"
                 )
                 for e in parse_errors:
                     sentry_sdk.capture_exception(
@@ -476,10 +485,7 @@ class OpenAIProvider(
                         {
                             "role": "system",
                             "content": (
-                                "ERROR PARSING YOUR RESPONSE:\n\n"
-                                + "\n\n".join(
-                                    f"{e.__class__.__name__}: {e}" for e in parse_errors
-                                )
+                                f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
                             ),
                         }
                     )

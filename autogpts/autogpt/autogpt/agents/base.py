@@ -15,7 +15,6 @@ from typing import (
     overload,
 )
 
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from pydantic import BaseModel, Field, validator
 
@@ -23,6 +22,7 @@ if TYPE_CHECKING:
     from autogpt.core.resource.model_providers.schema import (
         ChatModelInfo,
     )
+    from autogpt.models.action_history import ActionResult
 
 from autogpt.agents import protocols as _protocols
 from autogpt.agents.components import (
@@ -39,11 +39,13 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.resource.model_providers.openai import (
-    OPEN_AI_CHAT_MODELS,
-    OpenAIModelName,
+from autogpt.core.resource.model_providers import (
+    CHAT_MODELS,
+    AssistantFunctionCall,
+    ModelName,
 )
-from autogpt.models.action_history import ActionResult, EpisodicActionHistory
+from autogpt.core.resource.model_providers.openai import OpenAIModelName
+from autogpt.models.utils import ModelWithSummary
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -51,16 +53,12 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 P = ParamSpec("P")
 
-CommandName = str
-CommandArgs = dict[str, str]
-AgentThoughts = dict[str, Any]
-
 
 class BaseAgentConfiguration(SystemConfiguration):
     allow_fs_access: bool = UserConfigurable(default=False)
 
-    fast_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
-    smart_llm: OpenAIModelName = UserConfigurable(default=OpenAIModelName.GPT4)
+    fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
+    smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
     use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
@@ -95,21 +93,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
     summary_max_tlength: Optional[int] = None
     # TODO: move to ActionHistoryConfiguration
-
-    plugins: list[AutoGPTPluginTemplate] = Field(default_factory=list, exclude=True)
-
-    class Config:
-        arbitrary_types_allowed = True  # Necessary for plugins
-
-    @validator("plugins", each_item=True)
-    def validate_plugins(cls, p: AutoGPTPluginTemplate | Any):
-        assert issubclass(
-            p.__class__, AutoGPTPluginTemplate
-        ), f"{p} does not subclass AutoGPTPluginTemplate"
-        assert (
-            p.__class__.__name__ != "AutoGPTPluginTemplate"
-        ), f"Plugins must subclass AutoGPTPluginTemplate; {p} is a template instance"
-        return p
 
     @validator("use_functions_api")
     def validate_openai_functions(cls, v: bool, values: dict[str, Any]):
@@ -147,9 +130,6 @@ class BaseAgentSettings(SystemSettings):
     config: BaseAgentConfiguration = Field(default_factory=BaseAgentConfiguration)
     """The configuration for this BaseAgent subsystem instance."""
 
-    history: EpisodicActionHistory = Field(default_factory=EpisodicActionHistory)
-    """(STATE) The action history of the agent."""
-
 
 class AgentMeta(ABCMeta):
     def __call__(cls, *args, **kwargs):
@@ -160,13 +140,9 @@ class AgentMeta(ABCMeta):
         return instance
 
 
-class ThoughtProcessOutput(BaseModel):
-    command_name: str = ""
-    command_args: dict[str, Any] = Field(default_factory=dict)
-    thoughts: dict[str, Any] = Field(default_factory=dict)
-
-    def to_tuple(self) -> tuple[CommandName, CommandArgs, AgentThoughts]:
-        return self.command_name, self.command_args, self.thoughts
+class BaseAgentActionProposal(BaseModel):
+    thoughts: str | ModelWithSummary
+    use_tool: AssistantFunctionCall = None
 
 
 class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
@@ -199,22 +175,29 @@ class BaseAgent(Configurable[BaseAgentSettings], metaclass=AgentMeta):
         llm_name = (
             self.config.smart_llm if self.config.big_brain else self.config.fast_llm
         )
-        return OPEN_AI_CHAT_MODELS[llm_name]
+        return CHAT_MODELS[llm_name]
 
     @property
     def send_token_limit(self) -> int:
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> ThoughtProcessOutput:
+    async def propose_action(self) -> BaseAgentActionProposal:
         ...
 
     @abstractmethod
     async def execute(
         self,
-        command_name: str,
-        command_args: dict[str, str] = {},
-        user_input: str = "",
+        proposal: BaseAgentActionProposal,
+        user_feedback: str = "",
+    ) -> ActionResult:
+        ...
+
+    @abstractmethod
+    async def do_not_execute(
+        self,
+        denied_proposal: BaseAgentActionProposal,
+        user_feedback: str,
     ) -> ActionResult:
         ...
 
