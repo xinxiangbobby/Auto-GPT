@@ -1,7 +1,7 @@
 # AutoGPT Agent User Guide
 
 !!! note
-    This guide assumes you are in the `autogpts/autogpt` folder, where the AutoGPT Agent
+    This guide assumes you are in the `autogpt` folder, where the AutoGPT Agent
     is located.
 
 ## Command Line Interface
@@ -54,21 +54,12 @@ Options:
   -c, --continuous                Enable Continuous Mode
   -y, --skip-reprompt             Skips the re-prompting messages at the
                                   beginning of the script
-  -C, --ai-settings FILE          Specifies which ai_settings.yaml file to
-                                  use, relative to the AutoGPT root directory.
-                                  Will also automatically skip the re-prompt.
-  -P, --prompt-settings FILE      Specifies which prompt_settings.yaml file to
-                                  use.
   -l, --continuous-limit INTEGER  Defines the number of times to run in
                                   continuous mode
   --speak                         Enable Speak Mode
   --debug                         Enable Debug Mode
   --gpt3only                      Enable GPT3.5 Only Mode
   --gpt4only                      Enable GPT4 Only Mode
-  -b, --browser-name TEXT         Specifies which web-browser to use when
-                                  using selenium to scrape the web.
-  --allow-downloads               Dangerous: Allows AutoGPT to download files
-                                  natively.
   --skip-news                     Specifies whether to suppress the output of
                                   latest news on startup.
   --install-plugin-deps           Installs external dependencies for 3rd party
@@ -87,6 +78,7 @@ Options:
   --override-directives           If specified, --constraint, --resource and
                                   --best-practice will override the AI's
                                   directives instead of being appended to them
+  --component-config-file TEXT    Path to the json configuration file.
   --help                          Show this message and exit.
 ```
 </details>
@@ -130,15 +122,9 @@ Usage: python -m autogpt serve [OPTIONS]
   agent for every task.
 
 Options:
-  -P, --prompt-settings FILE  Specifies which prompt_settings.yaml file to
-                              use.
   --debug                     Enable Debug Mode
   --gpt3only                  Enable GPT3.5 Only Mode
   --gpt4only                  Enable GPT4 Only Mode
-  -b, --browser-name TEXT     Specifies which web-browser to use when using
-                              selenium to scrape the web.
-  --allow-downloads           Dangerous: Allows AutoGPT to download files
-                              natively.
   --install-plugin-deps       Installs external dependencies for 3rd party
                               plugins.
   --help                      Show this message and exit.
@@ -176,7 +162,7 @@ Here are some common arguments you can use when running AutoGPT:
     There are shorthands for some of these flags, for example `-P` for `--prompt-settings`.  
     Use `./autogpt.sh --help` for more information.
 
-[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpts/autogpt/.env.template
+[.env.template]: https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt/.env.template
 
 ## Agent State
 [agent state]: #agent-state
