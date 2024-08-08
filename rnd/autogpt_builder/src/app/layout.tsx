@@ -1,8 +1,12 @@
+import React from "react";
 import type { Metadata } from "next";
-import { ThemeProvider as NextThemeProvider } from "next-themes";
-import { type ThemeProviderProps } from "next-themes/dist/types";
 import { Inter } from "next/font/google";
+import { Providers } from "@/app/providers";
+import { NavBar } from "@/components/NavBar";
+import { cn } from "@/lib/utils";
+
 import "./globals.css";
+import TallyPopupSimple from "@/components/TallyPopup";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -11,10 +15,6 @@ export const metadata: Metadata = {
   description: "Your one stop shop to creating AI Agents",
 };
 
-function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return <NextThemeProvider {...props}>{children}</NextThemeProvider>
-}
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,15 +22,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <ThemeProvider
+      <body className={cn("antialiased transition-colors", inter.className)}>
+        <Providers
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
+          // Feel free to remove this line if you want to use the system theme by default
+          // enableSystem
           disableTransitionOnChange
         >
-          {children}
-        </ThemeProvider>
+          <div className="flex flex-col min-h-screen ">
+            <NavBar />
+            <main className="flex-1 p-4 overflow-hidden">{children}</main>
+            <TallyPopupSimple />
+          </div>
+        </Providers>
       </body>
     </html>
   );
